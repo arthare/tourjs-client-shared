@@ -1,4 +1,4 @@
-import { RideMapElevationOnly } from "./RideMap";
+import { RideMapElevationOnly } from "../tourjs-shared/RideMap";
 import { Decoration } from "./DecorationItems";
 import { DecorationFactory, Layer } from "./DecorationFactory";
 

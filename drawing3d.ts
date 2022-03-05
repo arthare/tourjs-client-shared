@@ -1,12 +1,13 @@
 import { DecorationState } from "./DecorationState";
 import { DisplayUser, PaintFrameState, RGB } from "./drawing-interface";
 import { DrawingBase } from "./drawing-shared";
-import { RaceState } from "./RaceState";
-import THREE, { CanvasTexture, DoubleSide, Matrix4, PerspectiveCamera, Plane, Vector2, Vector3 } from 'three';
-import { User, UserInterface } from "./User";
-import { RideMap } from "./RideMap";
+import { RaceState } from "../tourjs-shared/RaceState";
+import { CanvasTexture, DoubleSide, Matrix4, PerspectiveCamera, Plane, Vector2, Vector3 } from 'three';
+import { User, UserInterface } from "../tourjs-shared/User";
+import { RideMap } from "../tourjs-shared/RideMap";
 import { defaultThemeConfig } from "./drawing-constants";
 import { ThemeConfig, ConfiggedDecoration, randRange, Layer} from './DecorationFactory';
+import * as THREE from 'three';
 
 enum Planes {
   Background = -40,
@@ -34,15 +35,15 @@ function getVisElev(map:RideMap, dist:number) {
   return VIS_ELEV_SCALE*map.getElevationAtDistance(dist);
 }
 
-function measureText(str:string, size:number, font:string):THREE.Vector2 {
+function measureText(str:string, size:number, font:string):Vector2 {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if(!ctx) {
-    return new THREE.Vector2(0,0);
+    return new Vector2(0,0);
   }
   ctx.font = `${size}px ${font}`;
   const measure = ctx?.measureText(str);
-  return new THREE.Vector2(measure?.width, (measure?.actualBoundingBoxAscent || 0) - (measure?.actualBoundingBoxDescent || 0));
+  return new Vector2(measure?.width, (measure?.actualBoundingBoxAscent || 0) - (measure?.actualBoundingBoxDescent || 0));
 }
 
 class DisplayUser3D extends DisplayUser {
@@ -112,7 +113,7 @@ class DisplayUser3D extends DisplayUser {
         ctx.fillText(user.getName(), 0, canvas.height);
         const nameTex = new THREE.CanvasTexture(canvas);
 
-        function makeMaterial(color:number) {
+        const makeMaterial = (color:number) => {
           return new THREE.MeshStandardMaterial({
             color,
             map: nameTex,
@@ -703,7 +704,7 @@ export class Drawer3D extends DrawingBase {
     const spaceCutoff = getSpaceCutoffElevation(map);
     for(var sceneryKey of keys) {
       // each scenery item has a "frequency per km", so let's make sure we put enough in our game
-      const scenery = themeConfig.decorationSpecs.get(sceneryKey);
+      const scenery = themeConfig.decorationSpecs[sceneryKey];
       if(scenery.layer === Layer.Underground) {
         continue;
       }
@@ -785,7 +786,7 @@ export class Drawer3D extends DrawingBase {
             }
           }
         } else {
-          positionShift
+          
         }
 
         const mixLevel = 0.98;

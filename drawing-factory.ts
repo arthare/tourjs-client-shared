@@ -1,7 +1,8 @@
+import { DrawingInterface } from "./drawing-interface";
 import { DrawingOnCanvas } from "./drawing2d";
 import { Drawer3D } from "./drawing3d";
 
-export function createDrawer(mode:string) {
+export function createDrawer(mode:"2d"|"3d"):DrawingInterface {
   console.log("creating drawing in ", mode);
   switch(mode) {
     case '3d':

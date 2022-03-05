@@ -1,7 +1,7 @@
 import { DecorationState } from "./DecorationState";
 import { DrawingInterface, DisplayUser, RGB, PaintFrameState, DrawMinimapParameters, ai_color, human_color, local_color } from "./drawing-interface";
-import { RaceState } from "./RaceState";
-import { assert2 } from "./Utils";
+import { RaceState } from "../tourjs-shared/RaceState";
+import { assert2 } from "../tourjs-shared/Utils";
 
 export abstract class DrawingBase implements DrawingInterface {
   getColorForDraftSegment(displayUser:DisplayUser, draftColor:RGB, baseLineWidth:number, pctAlongLine:number, userSpeed:number, minAlpha:number){
