@@ -236,7 +236,7 @@ class DisplayUser3D extends DisplayUser {
   tmLastUpdate:number = 0;
   update(tmNow:number) {
 
-    const dist = this.myUser.getDistance();
+    const dist = this.myUser.getDistanceForUi(tmNow);
 
     this.obj.position.x = dist;
     this.obj.position.y = VIS_ELEV_SCALE*this.myUser.getLastElevation() + 1;
@@ -735,7 +735,7 @@ export class Drawer3D extends DrawingBase {
       if(localUser) {
         const s = tmNow / 1000;
 
-        const dist = localUser.getDistance();
+        const dist = localUser.getDistanceForUi(tmNow);
         const elev = map.getElevationAtDistance(dist);
 
         // we want the shadow-casting light to change where the shadow gets cast depending on how far they are along in the race
