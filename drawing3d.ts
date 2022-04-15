@@ -130,9 +130,6 @@ class DisplayUser3D extends DisplayUser {
         this.ar = ar;
         const nameGeo = new THREE.PlaneBufferGeometry(ar, 1);
         this.nameCube = new THREE.Mesh(nameGeo, this.fastMaterial);
-        //nameCube.rotateOnAxis(new THREE.Vector3(0,0,1), Math.PI/2);
-        //nameCube.rotateOnAxis(new THREE.Vector3(0,1,0), Math.PI/2);
-        //nameCube.lookAt(0,1,0);
         
         this.name = new THREE.Object3D();
         this.name.position.set(0,1,Planes.RoadNear + this.ar/2);
@@ -158,7 +155,6 @@ class DisplayUser3D extends DisplayUser {
         const pY = 0;
         const pZ = -0.5;
         this.draftingCycle[p] = randRange(0, 1);
-        console.log("draft cycle = ", pY);
       
         // add it to the geometry
         particleVerts[ixVert++] = pX;
@@ -328,7 +324,6 @@ class DisplayUser3D extends DisplayUser {
       yShift = Math.random() * 0.6;
     }
     this.name.position.set(this.obj.position.x + xShift, this.obj.position.y - 1, Planes.RoadNear + this.ar/2 + yShift);
-    
     
 
   }
@@ -815,6 +810,7 @@ export class Drawer3D extends DrawingBase {
   }
   paintCanvasFrame(canvas:HTMLCanvasElement, raceState:RaceState, timeMs:number, decorationState:DecorationState, dt:number, paintState:PaintFrameState):void {
 
+    this.doPaintFrameStateUpdates('', timeMs, dt, raceState, paintState);
     if(canvas.width >= 1920) {
       const ar = canvas.width / canvas.height;
       canvas.width = 1920;

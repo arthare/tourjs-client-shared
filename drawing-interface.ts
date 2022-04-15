@@ -42,6 +42,7 @@ export class PaintFrameState {
 
   public lastCanvasWidth = 0;
   public lastCanvasHeight = 0;
+  public frameCount = 0;
 }
 export interface RGB {
   r:number;
