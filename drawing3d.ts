@@ -3,7 +3,7 @@ import { DisplayUser, PaintFrameState, RGB } from "./drawing-interface";
 import { DrawingBase } from "./drawing-shared";
 import { RaceState } from "../tourjs-shared/RaceState";
 import { CanvasTexture, DoubleSide, Matrix4, PerspectiveCamera, Plane, Vector2, Vector3 } from 'three';
-import { User, UserInterface } from "../tourjs-shared/User";
+import { User, UserInterface, UserTypeFlags } from "../tourjs-shared/User";
 import { RideMap } from "../tourjs-shared/RideMap";
 import { defaultThemeConfig } from "./drawing-constants";
 import { ThemeConfig, ConfiggedDecoration, randRange, Layer} from './DecorationFactory';
@@ -83,6 +83,9 @@ class DisplayUser3D extends DisplayUser {
     const img = user.getImage();
     if(img) {
       const tex = new THREE.TextureLoader().load(img);
+      tex.rotation = -Math.PI/2;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.x = - 1;
       this.material.map = tex;
     }
     this.cube = new THREE.Mesh( this.geometry, this.material );
@@ -236,7 +239,20 @@ class DisplayUser3D extends DisplayUser {
 
     this.obj.position.x = dist;
     this.obj.position.y = VIS_ELEV_SCALE*this.myUser.getLastElevation() + 1;
-    this.obj.position.z = Planes.RacingLane;
+
+    let zTarget = Planes.RacingLane;
+    if(this.myUser.getUserType() & UserTypeFlags.Ai) {
+      // AIs get no Z boost
+    } else {
+      // it's a human of some flavour, so let's have it closer to the camera than the AIs
+      zTarget += 0.1;
+      if(this.myUser.getUserType() & UserTypeFlags.Local) {
+        // local users are closer still
+        zTarget += 0.1;
+      }
+      
+    }
+    this.obj.position.z = zTarget;
 
     const dt = this.tmLastUpdate > 0 ? (tmNow - this.tmLastUpdate) / 1000 : 0;
     this.tmLastUpdate = tmNow;
@@ -488,7 +504,7 @@ function buildRoad(raceState:RaceState):THREE.Mesh[] {
   const grassTexture = new THREE.TextureLoader().load( "/grass.jpg" );
   grassTexture.wrapS = THREE.RepeatWrapping;
   grassTexture.wrapT = THREE.RepeatWrapping;
-  grassTexture.repeat.set( 4, 4 );
+  grassTexture.repeat.set( 4, 8 );
   const fnGrassColor = (dist:number) => {
     let r = (Math.sin(dist / 168) + 1) / 2;
     return {r:0.6, 
@@ -627,13 +643,14 @@ export class Drawer3D extends DrawingBase {
 
   lastCanvasWidth:number = 0;
   lastCanvasHeight:number = 0;
+  lastCanvasPixelRatio:number = 1;
 
   constructor() {
     super();
   }
-  private _build(canvas:HTMLCanvasElement, raceState:RaceState, paintState:PaintFrameState) {
+  private _build(canvas:HTMLCanvasElement, raceState:RaceState, paintState:PaintFrameState, canvasPixelRatio:number) {
 
-    if(raceState !== this.myRaceState || canvas !== this.myCanvas || this.lastCanvasWidth !== canvas.clientWidth || this.lastCanvasHeight !== canvas.clientHeight) {
+    if(raceState !== this.myRaceState || canvas !== this.myCanvas || this.lastCanvasWidth !== canvas.clientWidth || this.lastCanvasHeight !== canvas.clientHeight || this.lastCanvasPixelRatio !== canvasPixelRatio) {
       this.lights.sunlight?.dispose();
       this.lights.ambient?.dispose();
       this.renderer?.dispose();
@@ -641,11 +658,12 @@ export class Drawer3D extends DrawingBase {
 
 
 
-      console.log("rebuilding", canvas.clientWidth, canvas.clientHeight);
       this.lastCanvasWidth = canvas.clientWidth;
       this.lastCanvasHeight = canvas.clientHeight;
-      canvas.width = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
+      this.lastCanvasPixelRatio = canvasPixelRatio
+      canvas.width = canvas.clientWidth * this.lastCanvasPixelRatio;
+      canvas.height = canvas.clientHeight * this.lastCanvasPixelRatio;
+      console.log("rebuilding", canvas.clientWidth, canvas.clientHeight,  "created pixel widths ", canvas.width, canvas.height);
 
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera( 85, canvas.clientWidth / canvas.clientHeight, Math.max(0.1, Planes.CameraClose - Planes.GrassNear), Planes.Background - Planes.CameraFast );
@@ -663,17 +681,17 @@ export class Drawer3D extends DrawingBase {
       this.lights.sunlight.position.x = map.getLength() / 2;
       this.lights.sunlight.position.y = (bounds.maxElev) + 100;
       this.lights.sunlight.position.z = Planes.CameraFast
-      this.lights.sunlight.castShadow = true;
-      this.lights.sunlight.shadow.mapSize.width = Math.max(window.innerWidth, window.innerHeight); // default
-      this.lights.sunlight.shadow.mapSize.height = Math.max(window.innerWidth, window.innerHeight); // default
-      this.lights.sunlight.shadow.camera.near = this.lights.sunlight.position.z - Planes.RacingLane; // default
-      this.lights.sunlight.shadow.camera.far = map.getLength(); // this appears to control the radius that the LIGHT functions as well as shadows.  so it needs to be the entire radius that we want the light to do
+      this.lights.sunlight.castShadow = false;
+      //this.lights.sunlight.shadow.mapSize.width = Math.max(window.innerWidth, window.innerHeight); // default
+      //this.lights.sunlight.shadow.mapSize.height = Math.max(window.innerWidth, window.innerHeight); // default
+      //this.lights.sunlight.shadow.camera.near = this.lights.sunlight.position.z - Planes.RacingLane; // default
+      //this.lights.sunlight.shadow.camera.far = map.getLength(); // this appears to control the radius that the LIGHT functions as well as shadows.  so it needs to be the entire radius that we want the light to do
 
       this.scene.add(this.lights.sunlight);
 
       this.renderer = new THREE.WebGLRenderer({ canvas, antialias:window.devicePixelRatio <= 1.0 });
-      this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
+      //this.renderer.shadowMap.enabled = false;
+      //this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
       
       // let's build the road
       const road = buildRoad(raceState);
@@ -810,16 +828,22 @@ export class Drawer3D extends DrawingBase {
   }
   paintCanvasFrame(canvas:HTMLCanvasElement, raceState:RaceState, timeMs:number, decorationState:DecorationState, dt:number, paintState:PaintFrameState):void {
 
+    let cpr = 1;
+
     this.doPaintFrameStateUpdates('', timeMs, dt, raceState, paintState);
     if(canvas.width >= 1920) {
       const ar = canvas.width / canvas.height;
       canvas.width = 1920;
       canvas.height = canvas.width / ar;
+    } 
+    
+    if((window as any).shrinky) {
+      cpr = 0.5;
     }
 
     const tmNow = new Date().getTime();
 
-    this._build(canvas, raceState, paintState);
+    this._build(canvas, raceState, paintState, cpr);
     this._trackLocalUser(tmNow);
 
     const seconds = Math.sin(timeMs / 1000);
