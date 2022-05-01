@@ -10,12 +10,12 @@ import { ThemeConfig, ConfiggedDecoration, randRange, Layer} from './DecorationF
 import * as THREE from 'three';
 
 enum Planes {
-  Background = -40,
-  CloudLayer = -35,
+  Background = -20,
+  CloudLayer = -5,
   RoadFar = -5,
   RacingLane = 2.5,
   RoadNear = 5,
-  GrassNear = 180,
+  GrassNear = 80,
   CameraClose = 20,
   CameraFast = 40,
 }
@@ -501,10 +501,10 @@ function buildRoad(raceState:RaceState):THREE.Mesh[] {
   roadMaterial.map = roadTexture;
   const roadMesh = buildSquareMesh(map, Planes.RoadNear, Planes.RoadFar, stepSize, roadMaterial, fnRoadColor);
 
-  const grassTexture = new THREE.TextureLoader().load( "/grass.jpg" );
-  grassTexture.wrapS = THREE.RepeatWrapping;
-  grassTexture.wrapT = THREE.RepeatWrapping;
-  grassTexture.repeat.set( 4, 8 );
+  const backGrassTexture = new THREE.TextureLoader().load( "/grass.jpg" );
+  backGrassTexture.wrapS = THREE.RepeatWrapping;
+  backGrassTexture.wrapT = THREE.RepeatWrapping;
+  backGrassTexture.repeat.set( 2, (Planes.RoadFar - Planes.Background) / 8 );
   const fnGrassColor = (dist:number) => {
     let r = (Math.sin(dist / 168) + 1) / 2;
     return {r:0.6, 
@@ -513,26 +513,37 @@ function buildRoad(raceState:RaceState):THREE.Mesh[] {
           }
   }
   const backGrassMaterial = new THREE.MeshPhongMaterial({vertexColors:true});
-  backGrassMaterial.map = grassTexture;
+  backGrassMaterial.map = backGrassTexture;
   const farGrassMesh = buildSquareMesh(map, Planes.RoadFar, Planes.Background, stepSize, backGrassMaterial, fnGrassColor);
-  const nearGrassMesh = buildSquareMesh(map, Planes.GrassNear, Planes.RoadNear, stepSize, backGrassMaterial, fnGrassColor);
+
+  const nearGrassTexture = backGrassTexture.clone();
+  nearGrassTexture.repeat.set(2, (Planes.GrassNear - Planes.RoadNear)/8);
+  const nearGrassMaterial = new THREE.MeshPhongMaterial({vertexColors:true});
+  nearGrassMaterial.map = nearGrassTexture;
+  const nearGrassMesh = buildSquareMesh(map, Planes.GrassNear, Planes.RoadNear, stepSize, nearGrassMaterial, fnGrassColor);
 
 
   const fnSkyColor = (dist:number, left:boolean, near:boolean) => {
-    return {r:near ? 1 : 0, 
-            g:near ? 1 : 0,
-            b:near ? 1 : 0,
+    return {r:near ? 1 : 0.1, 
+            g:near ? 1 : 0.1,
+            b:near ? 1 : 0.1,
           }
   }
   const bounds = map.getBounds();
+  const threeQuartersUp = 0.75*bounds.maxElev + 0.25*bounds.minElev;
   const fnSkyHeight = (dist:number) => {
-    const threeQuartersUp = 0.75*bounds.maxElev + 0.25*bounds.minElev;
     return {
-      near: getVisElev(map, dist),
+      near: bounds.minElev*VIS_ELEV_SCALE,
       far: VIS_ELEV_SCALE*threeQuartersUp,
     }
   }
+
+  const grid = new THREE.TextureLoader().load( "/grid.png" );
+  grid.wrapS = THREE.RepeatWrapping;
+  grid.wrapT = THREE.RepeatWrapping;
+  grid.repeat.set( 2, (threeQuartersUp-bounds.minElev) );
   const skyMaterial = new THREE.MeshStandardMaterial({color: 0x35D6ed, vertexColors: true});
+  skyMaterial.map = grid;
   const skyMesh = buildSquareMesh(map, Planes.Background, Planes.Background, stepSize, skyMaterial, fnSkyColor, fnSkyHeight);
   
   const fnSpaceColor = (dist:number, left:boolean, near:boolean) => {
@@ -557,6 +568,7 @@ function buildRoad(raceState:RaceState):THREE.Mesh[] {
   const stars = new THREE.TextureLoader().load( "/stars.png" );
   stars.wrapS = THREE.RepeatWrapping;
   stars.wrapT = THREE.RepeatWrapping;
+  stars.repeat.set(1.25, (bounds.maxElev - threeQuartersUp)/10);
   const spaceMaterial = new THREE.MeshStandardMaterial({color: 0xffffff, vertexColors: true});
   spaceMaterial.map = stars;
   
@@ -626,7 +638,7 @@ function getSpaceCutoffElevation(map:RideMap) {
 export class Drawer3D extends DrawingBase {
     
   scene:THREE.Scene|null = null
-  camera:THREE.PerspectiveCamera|null = null;
+  camera:THREE.OrthographicCamera|THREE.PerspectiveCamera|null = null;
   renderer:THREE.WebGLRenderer|null = null;
 
   lastCameraLookShift:THREE.Vector3 = new THREE.Vector3(0,0,0);
@@ -666,7 +678,15 @@ export class Drawer3D extends DrawingBase {
       console.log("rebuilding", canvas.clientWidth, canvas.clientHeight,  "created pixel widths ", canvas.width, canvas.height);
 
       this.scene = new THREE.Scene();
-      this.camera = new THREE.PerspectiveCamera( 85, canvas.clientWidth / canvas.clientHeight, Math.max(0.1, Planes.CameraClose - Planes.GrassNear), Planes.Background - Planes.CameraFast );
+      const aspectRatio = canvas.width / canvas.height;
+      {
+        const orthoWidth = 30;
+        const orthoHeight = orthoWidth / aspectRatio;
+        //this.camera = new THREE.OrthographicCamera(-orthoWidth, orthoWidth, orthoHeight, -orthoHeight, 0.001, 1000);
+      }
+      {
+        this.camera = new THREE.PerspectiveCamera(25, aspectRatio, 0.1, Planes.Background*2);
+      }
 
       //const light = new THREE.AmbientLight( 0x404040 ); // soft white light
       //this.scene.add( light );
@@ -786,7 +806,7 @@ export class Drawer3D extends DrawingBase {
             const avgSlope = (stats.endElev - stats.startElev) / (stats.endDist - stats.startDist);
             if(avgSlope >= 0.025 && localUser.getSpeed() <= 9) {
               // this is a serious hill, and they're slowed down enough that drafting don't matter no more! lets change the view
-              lookAtShift = new THREE.Vector3(stats.endDist, VIS_ELEV_SCALE*(0.3*stats.endElev+0.7*elev), Planes.RacingLane - 20);
+              lookAtShift = new THREE.Vector3(dist + 10, localUser.getLastElevation()*VIS_ELEV_SCALE, Planes.RacingLane);
               lookAtShift.sub(defaultLookAt);
               
 
@@ -818,9 +838,11 @@ export class Drawer3D extends DrawingBase {
         defaultCamPosition.add(this.lastCameraPosShift);
         defaultFocalLength += this.lastCameraFocalLengthShift;
 
+        defaultLookAt.y += 5;
         this.camera.lookAt(defaultLookAt);
-        this.camera.setFocalLength(defaultFocalLength);
-        this.camera.position.set(defaultCamPosition.x, defaultCamPosition.y, defaultCamPosition.z);
+        //this.camera.setFocalLength(defaultFocalLength);
+        const depth = 100;
+        this.camera.position.set(defaultLookAt.x - depth, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
       }
       
     }
