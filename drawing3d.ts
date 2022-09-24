@@ -95,7 +95,7 @@ class DisplayUser3D extends DisplayUser {
 
 
     { // building our name
-      const fontSize = 96;
+      const fontSize = 92;
       const font = 'Arial';
       const sizeNeeded = measureText(user.getName(), fontSize, font);
       console.log("we need ", sizeNeeded.x, sizeNeeded.y, " for ", user.getName());
@@ -129,9 +129,14 @@ class DisplayUser3D extends DisplayUser {
         this.lazyMaterial = makeMaterial(new THREE.Color(LAZY_R, LAZY_G, LAZY_B).getHex());
         this.regularMaterial = makeMaterial(new THREE.Color(REGULAR_R, REGULAR_G, REGULAR_B).getHex());
 
+        let sizeScale = 1;
+        if(window.devicePixelRatio > 1.5) {
+          // we're probably on a phone
+          sizeScale = 2.5;
+        }
         const ar = canvas.width / canvas.height;
         this.ar = ar;
-        const nameGeo = new THREE.PlaneBufferGeometry(ar, 1);
+        const nameGeo = new THREE.PlaneBufferGeometry(ar*2, 2);
         this.nameCube = new THREE.Mesh(nameGeo, this.fastMaterial);
         
         this.name = new THREE.Object3D();
