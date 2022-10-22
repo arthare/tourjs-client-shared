@@ -88,7 +88,7 @@ function buildImageFromName(name:string) {
   
   const canvas = document.createElement('canvas');
   canvas.width = sizeNeeded.x*1.25;
-  canvas.height = sizeNeeded.y*1.25;
+  canvas.height = sizeNeeded.y*1.55;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = 'white';
   ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -102,7 +102,7 @@ function buildImageFromName(name:string) {
 
   ctx.strokeStyle = 'black';
   ctx.fillStyle = 'black';
-  ctx.fillText(initials, canvas.width*0.125, sizeNeeded.y + sizeNeeded.y*0.125);
+  ctx.fillText(initials, canvas.width*0.125, sizeNeeded.y);
   
   const dataUrl = canvas.toDataURL();
   console.log("made name for ", name, initials, dataUrl);
@@ -772,7 +772,7 @@ export class Drawer3D extends DrawingBase {
         //this.camera = new THREE.OrthographicCamera(-orthoWidth, orthoWidth, orthoHeight, -orthoHeight, 0.001, 1000);
       }
       {
-        this.camera = new THREE.PerspectiveCamera(60, aspectRatio, 0.1, Planes.Background*2);
+        this.camera = new THREE.PerspectiveCamera(80, aspectRatio, 0.1, Planes.Background*2);
       }
 
       //const light = new THREE.AmbientLight( 0x404040 ); // soft white light
@@ -928,8 +928,8 @@ export class Drawer3D extends DrawingBase {
         defaultLookAt.y += 5;
         this.camera.lookAt(defaultLookAt);
         //this.camera.setFocalLength(defaultFocalLength);
-        const depth = 35;
-        this.camera.position.set(defaultLookAt.x - depth*0.75, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
+        const depth = 25;
+        this.camera.position.set(defaultLookAt.x - depth*0.4, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
       }
       
     }
