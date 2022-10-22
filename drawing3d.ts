@@ -46,6 +46,71 @@ function measureText(str:string, size:number, font:string):Vector2 {
   return new Vector2(measure?.width, (measure?.actualBoundingBoxAscent || 0) - (measure?.actualBoundingBoxDescent || 0));
 }
 
+function getFirstLettersOfName(name:string):string {
+  
+  /*const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');*/
+  
+  let splitted = name.split(/[\W\s]/gi);
+  splitted = splitted.filter((word) => !!word.trim());
+  return splitted.map((word) => {
+
+    
+    if(word) {
+      let everyLetterNumeric = true;
+      for(var letter of word) {
+        if(letter >= '0' && letter <= '9') {
+
+        } else {
+          everyLetterNumeric = false;
+          break;
+        }
+      }
+      if(everyLetterNumeric) {
+        return word;
+      } else {
+        return word[0];
+      }
+    } else {
+      return '';
+    }
+  }).join('');
+}
+function buildImageFromName(name:string) {
+  const initials = getFirstLettersOfName(name);
+
+  
+  const font = 'Arial';
+  const fontSize = 92;
+  const sizeNeeded = measureText(initials, fontSize, font);
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = sizeNeeded.x*1.25;
+  canvas.height = sizeNeeded.y*1.25;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.font = `${fontSize}px ${font}`;
+
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'white';
+  ctx.fillStyle = 'white';
+  ctx.strokeText(initials, 0, sizeNeeded.y);
+
+  ctx.strokeStyle = 'black';
+  ctx.fillStyle = 'black';
+  ctx.fillText(initials, canvas.width*0.125, sizeNeeded.y + sizeNeeded.y*0.125);
+  
+  const dataUrl = canvas.toDataURL();
+  console.log("made name for ", name, initials, dataUrl);
+  return dataUrl
+}
+
+getFirstLettersOfName(`"Dilan Tuf-Overes"`);
+
 class DisplayUser3D extends DisplayUser {
   geometry:THREE.BoxGeometry;
   material:THREE.MeshStandardMaterial;
@@ -75,17 +140,26 @@ class DisplayUser3D extends DisplayUser {
     this.camera = camera;
     this.geometry = new THREE.BoxGeometry(0.25 + randRange(0,0.02),3,3);
     this.geometry.translate(0,0,0);
+
+    let myColor = 0xffffff;
+    if(!(user.getUserType() & UserTypeFlags.Ai)) {
+      // we're a human
+      myColor = 0xFF4444;
+    } else if(!(user.getUserType() & UserTypeFlags.Bot)) {
+      myColor = 0x888888;
+    }
+
+
     this.material = new THREE.MeshStandardMaterial( { 
-      color: 0xffffff,
+      color: myColor,
       opacity: 1,
     } );
-    user.getImage()
-    const img = user.getImage();
+    const img = user.getImage() || buildImageFromName(user.getName());
     if(img) {
       const tex = new THREE.TextureLoader().load(img);
       tex.rotation = -Math.PI/2;
       tex.wrapS = THREE.RepeatWrapping;
-      tex.repeat.x = - 1;
+      tex.repeat.x = 1;
       this.material.map = tex;
     }
     this.cube = new THREE.Mesh( this.geometry, this.material );
@@ -95,7 +169,10 @@ class DisplayUser3D extends DisplayUser {
 
 
     { // building our name
-      const fontSize = 92;
+      let fontSize = 128;
+      if(user.getUserType() & UserTypeFlags.Ai) {
+        fontSize = 92;
+      }
       const font = 'Arial';
       const sizeNeeded = measureText(user.getName(), fontSize, font);
       console.log("we need ", sizeNeeded.x, sizeNeeded.y, " for ", user.getName());
@@ -108,15 +185,18 @@ class DisplayUser3D extends DisplayUser {
         ctx.font = `${fontSize}px ${font}`;
         ctx.fillRect(0,0,canvas.width, canvas.height);
 
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 3;
+        const isHuman = !(this.myUser.getUserType() & (UserTypeFlags.Ai | UserTypeFlags.Bot));
+        const transparentBlack = 'rgba(0,0,0,0.3)';
+        const transparentWhite = 'rgba(255,255,255,0.3)';
+        ctx.strokeStyle = isHuman ? 'black' : transparentBlack;
+        ctx.lineWidth = 9;
         ctx.strokeText(user.getName(), 0, canvas.height);
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'white';
+        ctx.fillStyle =  isHuman ? 'white' : transparentWhite;
+        ctx.strokeStyle = isHuman ? 'white' : transparentWhite;
         ctx.fillText(user.getName(), 0, canvas.height);
         const nameTex = new THREE.CanvasTexture(canvas);
 
-        const makeMaterial = (color:number) => {
+        const makeMaterial = (userType:number, color:number) => {
           return new THREE.MeshStandardMaterial({
             color,
             map: nameTex,
@@ -125,18 +205,14 @@ class DisplayUser3D extends DisplayUser {
             side: DoubleSide,
           });
         }
-        this.fastMaterial = makeMaterial(new THREE.Color(FAST_R, FAST_G, FAST_B).getHex());
-        this.lazyMaterial = makeMaterial(new THREE.Color(LAZY_R, LAZY_G, LAZY_B).getHex());
-        this.regularMaterial = makeMaterial(new THREE.Color(REGULAR_R, REGULAR_G, REGULAR_B).getHex());
+        this.fastMaterial = makeMaterial(this.myUser.getUserType(), new THREE.Color(FAST_R, FAST_G, FAST_B).getHex());
+        this.lazyMaterial = makeMaterial(this.myUser.getUserType(), new THREE.Color(LAZY_R, LAZY_G, LAZY_B).getHex());
+        this.regularMaterial = makeMaterial(this.myUser.getUserType(), new THREE.Color(REGULAR_R, REGULAR_G, REGULAR_B).getHex());
 
-        let sizeScale = 1;
-        if(window.devicePixelRatio > 1.5) {
-          // we're probably on a phone
-          sizeScale = 2.5;
-        }
+        const sizeOfGeo = fontSize / 46;
         const ar = canvas.width / canvas.height;
         this.ar = ar;
-        const nameGeo = new THREE.PlaneBufferGeometry(ar*2, 2);
+        const nameGeo = new THREE.PlaneBufferGeometry(ar*sizeOfGeo, sizeOfGeo);
         this.nameCube = new THREE.Mesh(nameGeo, this.fastMaterial);
         
         this.name = new THREE.Object3D();
@@ -281,7 +357,7 @@ class DisplayUser3D extends DisplayUser {
     this.obj.lookAt(upMe);
     
     
-    if(true || this.myUser.hasDraftersThisCycle(tmNow)) { // handling drafting graphics
+    if(this.myUser.hasDraftersThisCycle(tmNow)) { // handling drafting graphics
       this.draftingCube.visible = true;
       const rgDraftCycle:any = this.draftingGeo.attributes.draftPct.array;
       const rgDraftLength:any = this.draftingGeo.attributes.draftLength.array;
@@ -327,6 +403,7 @@ class DisplayUser3D extends DisplayUser {
     } else {
       this.draftingCube.visible = false;
     }
+
     this.name.lookAt(this.camera.position);
     
     const handicapRatio = this.myUser.getLastPower() / this.myUser.getHandicap();
@@ -344,7 +421,12 @@ class DisplayUser3D extends DisplayUser {
       xShift = Math.random() * 0.6;
       yShift = Math.random() * 0.6;
     }
-    this.name.position.set(this.obj.position.x + xShift, this.obj.position.y - 1, Planes.RoadNear + this.ar/2 + yShift);
+
+    let minusAmount = 1;
+    if(this.myUser.getUserType() & (UserTypeFlags.Ai | UserTypeFlags.Bot)) {
+      minusAmount = 1;
+    }
+    this.name.position.set(this.obj.position.x + xShift, this.obj.position.y - minusAmount, Planes.RoadNear + this.ar + yShift + minusAmount);
     
 
   }
@@ -690,7 +772,7 @@ export class Drawer3D extends DrawingBase {
         //this.camera = new THREE.OrthographicCamera(-orthoWidth, orthoWidth, orthoHeight, -orthoHeight, 0.001, 1000);
       }
       {
-        this.camera = new THREE.PerspectiveCamera(25, aspectRatio, 0.1, Planes.Background*2);
+        this.camera = new THREE.PerspectiveCamera(60, aspectRatio, 0.1, Planes.Background*2);
       }
 
       //const light = new THREE.AmbientLight( 0x404040 ); // soft white light
@@ -792,7 +874,7 @@ export class Drawer3D extends DrawingBase {
         let defaultCamPosition = new THREE.Vector3(dist+1, getVisElev(map, dist) + camDist/4, camDist);
         //let defaultCamPosition = new THREE.Vector3(dist+1, getVisElev(map, dist) + 50, camDist);
         
-        const defaultLookAt = new THREE.Vector3(dist, VIS_ELEV_SCALE*localUser.getLastElevation(), Planes.RoadNear);
+        const defaultLookAt = new THREE.Vector3(dist, VIS_ELEV_SCALE*localUser.getLastElevation() - 5, Planes.RoadNear);
 
         // these "shifts" are how far we want to change our aim from the default, "look directly at player" view
         let focalLengthShift = 0;
@@ -846,8 +928,8 @@ export class Drawer3D extends DrawingBase {
         defaultLookAt.y += 5;
         this.camera.lookAt(defaultLookAt);
         //this.camera.setFocalLength(defaultFocalLength);
-        const depth = 100;
-        this.camera.position.set(defaultLookAt.x - depth, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
+        const depth = 35;
+        this.camera.position.set(defaultLookAt.x - depth*0.75, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
       }
       
     }
