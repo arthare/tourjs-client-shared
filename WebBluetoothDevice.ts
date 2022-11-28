@@ -1,6 +1,7 @@
-import { writeToCharacteristic, monitorCharacteristic, serviceUuids } from "./DeviceUtils";
+import { writeToCharacteristic, monitorCharacteristic, serviceUuids, FnCancel } from "./DeviceUtils";
 import { CadenceRecipient, HrmRecipient, SlopeSource } from "../tourjs-shared/User";
 import { assert2 } from "../tourjs-shared/Utils";
+import { request } from "http";
 
 export enum BTDeviceState {
   Ok,
@@ -14,6 +15,7 @@ export type FnPowerReceipient = (tmNow:number, watts:number) => void
 
 export interface ConnectedDeviceInterface {
   disconnect():Promise<void>;
+  zeroOffset():Promise<void>;
   userWantsToKeep():boolean; // if you get disconnected, then the user doesn't want to keep you
 
   getDeviceId():string; // return the same device ID for the same physical device
@@ -54,6 +56,9 @@ export abstract class PowerDataDistributor implements ConnectedDeviceInterface {
   disconnect():Promise<void> {
     this._userWantsToKeep = false;
     return Promise.resolve();
+  }
+  zeroOffset(): Promise<void> {
+    throw new Error("Zero Offset not implemented for this device");
   }
   userWantsToKeep():boolean {
     return this._userWantsToKeep;
@@ -349,6 +354,53 @@ export class BluetoothCpsDevice extends BluetoothDeviceShared {
   }
   getDeviceTypeDescription():string {
     return "Bluetooth Powermeter";
+  }
+  async zeroOffset():Promise<void> {
+    const gatt = this._gattDevice;
+    if(gatt) {
+      const dvZeroOffset:DataView = new DataView(new ArrayBuffer(1));
+      dvZeroOffset.setUint8(0, 0x0c);
+      let cancelMonitorControlPoint:FnCancel|null = null;
+      try {
+
+        const result = await new Promise<void>(async (resolve, reject) => {
+          cancelMonitorControlPoint = await monitorCharacteristic(gatt, serviceUuids.cps, serviceUuids.cyclingPowerControlPoint, (evt:any) => {
+            const buf = evt.target.value as DataView;
+            console.log("Zero offset response: ", buf);
+            if(buf && buf.byteLength >= 3) {
+              // byte 0 is an opcode
+              // byte 1 is the request opcode
+              // byte 2 is the response value
+              // byte 3 and 4 is apparently optional and is a residual Nm in 1/32Nm
+              const responseOpCode = buf.getUint8(0);
+              const requestOpCode = buf.getUint8(1);
+              const responseValue = buf.getUint8(2);
+              const residualNm = buf.getUint16(3, true);
+              if(requestOpCode === 0x0c) {
+                if(responseValue === 0x04) {
+                  reject(new Error("Zero offset failed.  Crank calibration response code: " + responseValue.toString(16)));
+                } else if(responseValue === 0x01) {
+                  resolve();
+                } else {
+                  reject(new Error("Unknown response from crank: 0x" + responseValue.toString(16)));
+                }
+              }
+            }
+          });
+          const written = await writeToCharacteristic(gatt, serviceUuids.cps, serviceUuids.cyclingPowerControlPoint, dvZeroOffset).catch(() => {
+  
+          })
+          console.log("wrote to cps control point for zero offset");
+        })
+      } catch(e) {
+        console.log("Failed to zero-offset your powermeter.  You may have success if you try again", e);
+        alert("Failed to zero-offset your powermeter.  You may have success if you try again");
+      } finally {
+        if(cancelMonitorControlPoint) {
+          cancelMonitorControlPoint();
+        }
+      }
+    }
   }
   _hasSeenCadence: boolean = false;
 
