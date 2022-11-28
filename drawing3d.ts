@@ -4,7 +4,7 @@ import { DrawingBase } from "./drawing-shared";
 import { RaceState } from "../tourjs-shared/RaceState";
 import { CanvasTexture, DoubleSide, Matrix4, PerspectiveCamera, Plane, Vector2, Vector3 } from 'three';
 import { User, UserInterface, UserTypeFlags } from "../tourjs-shared/User";
-import { RideMap } from "../tourjs-shared/RideMap";
+import { RideMap, RideMapElevationOnly } from "../tourjs-shared/RideMap";
 import { defaultThemeConfig } from "./drawing-constants";
 import { ThemeConfig, ConfiggedDecoration, randRange, Layer} from './DecorationFactory';
 import * as THREE from 'three';
@@ -135,7 +135,9 @@ class DisplayUser3D extends DisplayUser {
   draftingLength:Float32Array;
   draftingEffort:Float32Array;
 
-  constructor(user:UserInterface, scene:THREE.Scene, camera:THREE.PerspectiveCamera) {
+  map:RideMapElevationOnly;
+
+  constructor(user:UserInterface, scene:THREE.Scene, camera:THREE.PerspectiveCamera, map:RideMapElevationOnly) {
     super(user);
     this.camera = camera;
     this.geometry = new THREE.BoxGeometry(0.25 + randRange(0,0.02),3,3);
@@ -166,6 +168,7 @@ class DisplayUser3D extends DisplayUser {
     this.cube.castShadow = true;
     this.myUser = user;
     this.myScene = scene;
+    this.map = map;
 
 
     { // building our name
@@ -222,7 +225,7 @@ class DisplayUser3D extends DisplayUser {
       }
     }
     { // drafting indicator// create the particle variables
-      const particleCount = 100;
+      const particleCount = 300;
       const particleGeometry = new THREE.BufferGeometry();
       this.draftingCycle = new Float32Array(particleCount);
       this.draftingLength = new Float32Array(particleCount);
@@ -237,7 +240,7 @@ class DisplayUser3D extends DisplayUser {
         // position values, -250 -> 250
         const pX = randRange(-0.25, 0.25);
         const pY = 0;
-        const pZ = -0.5;
+        const pZ = -0.5 + randRange(0, 2);
         this.draftingCycle[p] = randRange(0, 1);
       
         // add it to the geometry
@@ -261,13 +264,13 @@ class DisplayUser3D extends DisplayUser {
 
                                     vec3 rawPos = position;
                                     rawPos.x = (position.x / abs(position.x)) * sqrt(draftPct) * 3.0;
-                                    rawPos.z = position.z;
+                                    rawPos.z = position.z + 0.1;
                                     rawPos.y -= draftPct * draftLength;
 
                                     float r = rand(draftPct);
                                     rawPos += 0.1*draftEffort.w*vec3(r,r,r);
                                     vec4 mvPosition = modelViewMatrix * vec4( rawPos, 1.0 );
-                                    gl_PointSize = (1.0 - draftPct) * 8.0 * ( 10.0 / -mvPosition.z );
+                                    gl_PointSize = (1.0 - draftPct) * 12.0 * ( 10.0 / -mvPosition.z );
 
                                     gl_Position = projectionMatrix * mvPosition;
 
@@ -316,13 +319,17 @@ class DisplayUser3D extends DisplayUser {
   tmLastUpdate:number = 0;
   update(tmNow:number) {
 
-    const dist = this.myUser.getDistanceForUi(tmNow);
-
-    this.obj.position.x = dist;
-    this.obj.position.y = VIS_ELEV_SCALE*this.myUser.getLastElevation() + 1;
+    let dist = this.myUser.getDistanceForUi(tmNow);
+    let elev = this.myUser.getLastElevation();
+    if(this.myUser.isProbablyFinished()) {
+      dist = this.map.getLength();
+    }
 
     let zTarget = Planes.RacingLane;
-    if(this.myUser.getUserType() & UserTypeFlags.Ai) {
+    if(this.myUser.isFinished()) {
+      zTarget -= (Planes.RoadNear - Planes.RoadFar);
+      dist -= this.myUser.getFinishRank() * 4; // set everyone 4m apart
+    } else if(this.myUser.getUserType() & UserTypeFlags.Ai) {
       // AIs get no Z boost
     } else {
       // it's a human of some flavour, so let's have it closer to the camera than the AIs
@@ -333,6 +340,10 @@ class DisplayUser3D extends DisplayUser {
       }
       
     }
+
+    elev = this.map.getElevationAtDistance(dist);
+    this.obj.position.x = dist;
+    this.obj.position.y = VIS_ELEV_SCALE*elev + 1;
     this.obj.position.z = zTarget;
 
     const dt = this.tmLastUpdate > 0 ? (tmNow - this.tmLastUpdate) / 1000 : 0;
@@ -369,7 +380,7 @@ class DisplayUser3D extends DisplayUser {
         for(var index = 0; index < rgDraftCycle.length; index++) {
           let val = rgDraftCycle[index];
           const pct = Math.max(0.3, val);
-          const speed = pct * userSpeed + (1-pct)*0;
+          const speed = userSpeed;
           val += speed*dt / draftLength;
           if(val >= 1) {
             // resetting the particle back to the start
@@ -843,6 +854,7 @@ export class Drawer3D extends DrawingBase {
     }
   }
   _tmLastTrack = 0;
+
   private _trackLocalUser(tmNow:number) {
     let dt = 0;
     if(this._tmLastTrack !== 0) {
@@ -926,10 +938,11 @@ export class Drawer3D extends DrawingBase {
         defaultFocalLength += this.lastCameraFocalLengthShift;
 
         defaultLookAt.y += 5;
-        this.camera.lookAt(defaultLookAt);
+        
         //this.camera.setFocalLength(defaultFocalLength);
         const depth = 25;
         this.camera.position.set(defaultLookAt.x - depth*0.4, defaultLookAt.y + depth/2, Planes.RacingLane + depth);
+        this.camera.lookAt(defaultLookAt); // art: I suspect this actually triggers a redraw.  I used to have an _awful_ choppy appearance, and I'm pretty sure it's because I used to do lookAt before setting the camera's position
       }
       
     }
@@ -937,17 +950,14 @@ export class Drawer3D extends DrawingBase {
   }
   paintCanvasFrame(canvas:HTMLCanvasElement, raceState:RaceState, timeMs:number, decorationState:DecorationState, dt:number, paintState:PaintFrameState):void {
 
-    let cpr = 1;
+    let cpr = window.devicePixelRatio || 1.0;
 
     this.doPaintFrameStateUpdates('', timeMs, dt, raceState, paintState);
-    if(canvas.width >= 1920) {
-      const ar = canvas.width / canvas.height;
-      canvas.width = 1920;
-      canvas.height = canvas.width / ar;
-    } 
+
     
     if((window as any).shrinky) {
-      cpr = 0.5;
+      cpr = (window as any).shrinky || 0.5;
+      console.log("pixel ratio set to 0.5");
     }
 
     const tmNow = new Date().getTime();
@@ -965,7 +975,7 @@ export class Drawer3D extends DrawingBase {
     if(this.scene) {
       const users = raceState.getUserProvider().getUsers(tmNow)
       for(var user of users) {
-        const ps:DisplayUser3D = (paintState.userPaint.get(user.getId()) as DisplayUser3D) || new DisplayUser3D(user, this.scene, this.camera);
+        const ps:DisplayUser3D = (paintState.userPaint.get(user.getId()) as DisplayUser3D) || new DisplayUser3D(user, this.scene, this.camera, raceState.getMap());
         ps.update(tmNow)
 
         paintState.userPaint.set(user.getId(), ps);
